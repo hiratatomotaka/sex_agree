@@ -1,0 +1,84 @@
+<body>
+<p>
+    <b>QRコード変換に外部APIを利用しているため、本番データでは実験しないでください</b>
+</p>
+<p>合言葉(半角数字と半角英字小文字のみ): <input type="text" id="word"></p>
+<p>同意時刻: 2023年6月18日午後7時28分<input type="number" id="agree_time" min="0" max="59" value="0" step="1">秒
+<p>性交同意書(未暗号): <input type="file" id="file"></p>
+<p><input type="button" value="demo" onclick="main();"></p>
+<hr>
+<p>合言葉: <span id="word_o"></span></p>
+<p>同意時刻: 2023年6月18日午後7時28分<span id="agree_time_o">--</span>秒</p>
+<h3>暗号化デモ</h3>
+<p>1. 合言葉と同意時刻を連結した文字列: <span id="concated"></span></p>
+<p>2. 上記のsha256ハッシュ値: <span id="sha256_hash"></span></p>
+<p>3. 性交同意書(未暗号)を平文、上記ハッシュ値を暗号鍵としたAES256の暗号文(A): <textarea id="A"></textarea></p>
+<p>4. (A)のsha256ハッシュ値(B): <span id="B"></span></p>
+<p>5. (skip)</p>
+<p>6-1. (B)をbase64形式にしたものに拡張子を加えたもの: <span id="B_base64_ext"></span></p>
+<p>6-2. 上記をQRコードにしたもの: <img id="QR"/></p>
+<h3>法人のサーバに登録されるデータ((B)→((A), 同意時刻))</h3>
+<p><textarea id="json">{}</textarea></p>
+<p><input type="button" onclick="save_json();" value="保存"></p>
+<script src="cipher_funcs.js"></script>
+<script>
+    async function main(){
+        window.word.value = window.word.value.replaceAll(/[^a-z0-9]/g, "");
+        if (window.word.value == "")
+            return alert("合言葉を入力してください");
+        if (!(0 <= window.agree_time.value && window.agree_time.value <= 59)){
+            window.agree_time.value = 0;
+        }    
+        window.agree_time.value = Math.floor(window.agree_time.value * 1); // 整数じゃなかった場合に整数にする
+        if (window.agree_time.value < 10)
+            window.agree_time.value = "0" + window.agree_time.value;
+        if (window.file.files.length != 1)
+            return alert("ファイルを一つ選択してください");
+
+        var ext = window.file.files[0].name.match(/(\.[a-zA-Z0-9]+)?$/)[0];
+        if (ext.length == 0)
+            return alert("拡張子のないファイルは受け付けません");
+
+        window.word_o.innerHTML = window.word.value;        
+        window.agree_time_o.innerHTML = window.agree_time.value;
+        window.concated.innerHTML = window.word.value + "@2023/06/18-19:28:" + window.agree_time.value;
+    
+        window.sha256_hash.innerHTML = await sha256(window.concated.innerHTML);
+
+        var fileReader = new FileReader();
+        fileReader.onload = async function (evt) {
+            var buffer = evt.target.result;
+            var uint8Array = new Uint8Array(buffer);
+            window.A.value = await AES256_encrypt(uint8Array, window.sha256_hash.innerHTML);
+
+            window.B.innerHTML = await sha256(window.A.value);
+            
+            window.B_base64_ext.innerHTML = hex2base64(window.B.innerHTML) + ext;
+            window.QR.src = "https://api.qrserver.com/v1/create-qr-code/?data=" + (window.B_base64_ext.innerHTML).replaceAll("+", "%2B");
+
+            var records = JSON.parse(window.json.value);
+            records[window.B.innerHTML] = [window.A.value, "2023/06/18-19:28:" + window.agree_time.value];
+            window.json.value = JSON.stringify(records, null, "\t");
+
+        };
+        fileReader.readAsArrayBuffer(window.file.files[0]);
+
+
+    }
+
+    function save_json(){
+        const blob = new Blob([window.json.value], {type: 'text/plain'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        document.body.appendChild(a);
+        a.download = 'dict.json';
+        a.href = url;
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+
+
+</script>
+
+</body>

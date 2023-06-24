@@ -1,0 +1,88 @@
+<body>
+<p>サーバ記憶ファイル: <input type="file" id="json"></p>
+<p>合言葉: <input type="text" id="word"></p>
+<p>QRコードファイル: <input type="file" id="QR"></p>
+<p><input type="button" onclick="main();" value="demo"></p>
+<hr>
+<p>1-1. QRコードから読み取った文字列: <span id="qr_base64_ext"></span></p>
+<p>1-2. 上記(拡張子除く)を16進形式にしたもの(B): <span id="qr_hex"></span></p>
+<p>2. サーバ記憶ファイルから、(B)に対応するデータを探す:</p>
+<blockquote>検索結果<br>(A):<textarea id="A"></textarea><br>同意時刻:<span id="agree_time"></span></blockquote>
+<p>3. 合言葉と同意時刻を連結した文字列: <span id="concated"></span></p>
+<p>4. 上記のsha256ハッシュ値: <span id="sha256_hash"></span></p>
+<p>5. 上記ハッシュ値を鍵として、(A)を AES256 復号して「性交同意書(未暗号)」を得る：<input type="button" id="save_button" onclick="save_result();" value="保存" disabled=true>
+<!-- br>MIMEタイプの指定(任意)<input type="text" id="mimetype">
+<br>拡張子の指定(任意)<input type="text" id="extension" -->
+</p>
+
+<script src="https://dmla.github.io/jsqrcode/src/qr_packed.js"></script>
+<script src="cipher_funcs.js"></script>
+<script>
+    window.global = {};
+    async function main(){
+        window.word.value = window.word.value.replaceAll(/[^a-z0-9]/g, "");
+        if (window.word.value == "")
+            return alert("合言葉を入力してください");
+
+        // QR decord: https://ascii.jp/elem/000/001/552/1552247/
+        var reader_QR = new FileReader();
+        var reader_server = new FileReader();
+        reader_QR.onload = function() {
+            qrcode.callback = function(res) {
+               if(res instanceof Error)
+                   return alert("QRコードが検出できませんでした。");
+               try{
+                   window.qr_base64_ext.innerHTML = res;
+                   var match = res.match(/^(.+)\.([a-zA-Z0-9]+)$/);
+                   console.log(match);
+                   window.qr_hex.innerHTML = base64_to_hex(match[1]);
+                   global.ext = match[2];
+               }catch(e){
+                   return alert("QRコードの内容がbase64形式のテキストではありませんでした。");   
+               }
+               reader_server.readAsText(window.json.files[0]);
+            };
+            qrcode.decode(reader_QR.result);
+        };
+        reader_server.onload = async function() {
+            try{
+                var dict = JSON.parse(reader_server.result);
+            }catch(e){
+                return alert("サーバ記憶ファイルが破損しています");
+            }
+            var [A, 同意時刻] = dict[window.qr_hex.innerHTML];
+            window.A.value = A;
+            window.agree_time.innerHTML = 同意時刻;
+            window.concated.innerHTML = window.word.value + "@" + 同意時刻;
+            window.sha256_hash.innerHTML = await sha256(window.concated.innerHTML);
+
+            // 復号処理
+            try{
+                global.hex_result = await AES256_decrypt(window.A.value, window.sha256_hash.innerHTML);
+            }catch(e){
+                return alert("QRコードか合言葉が間違っている、またはサーバ記憶の破損のため、復号に失敗しました。");
+            }
+            window.save_button.disabled = false;
+        };
+        reader_QR.readAsDataURL(window.QR.files[0]);
+    }
+
+    function save_result(){
+
+        var predicted_mime = predict_mime(global.hex_result);
+
+        const blob = new Blob([global.hex_result], {type: "others"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        document.body.appendChild(a);
+        a.download = 'result.' + global.ext;
+        a.href = url;
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        window.save_button.disabled = true;
+    }
+
+   
+</script>
+</body>

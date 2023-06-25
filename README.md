@@ -7,7 +7,7 @@
 ![](./src/dfd_enc.png)
 
 ### 復号
-![](./src/def_dec.png)
+![](./src/dfd_dec.png)
 
 ## 想定される攻撃とその防御
 
